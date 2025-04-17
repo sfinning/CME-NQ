@@ -158,7 +158,7 @@ def get_user_input():
     """
     day_number_map = { 2: "Monday", 3: "Tuesday", 4: "Wednesday", 5: "Thursday", 6: "Friday" }
     allowed_nums_str = ", ".join(map(str, day_number_map.keys()))
-    timezone_shortcuts = {"EST": "America/New_York", "CST": "America/Chicago", "UTC": "UTC"}
+    timezone_shortcuts = {"EST": "America/New_York", "CST": "America/Chicago"}
 
     range_start_str, range_end_str, post_range_end_str = None, None, None
     target_day_name, target_tz_name = None, None
@@ -184,7 +184,7 @@ def get_user_input():
 
     print("\n--- Enter Timezone ---")
     while True:
-        tz_input = input("Enter Timezone (e.g., EST, CST, UTC, America/New_York, Europe/London): ").strip()
+        tz_input = input("Enter Timezone (e.g., EST, CST, UTC): ").strip()
         resolved_tz_name = None; tz_input_upper = tz_input.upper()
         if tz_input_upper in timezone_shortcuts: resolved_tz_name = timezone_shortcuts[tz_input_upper]; print(f"Shortcut mapped to '{resolved_tz_name}'.")
         else: resolved_tz_name = tz_input
