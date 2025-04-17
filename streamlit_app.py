@@ -10,16 +10,18 @@ import math # Keep math import
 from pytz import AmbiguousTimeError, NonExistentTimeError # Import math library, potentially for future use (not currently used)
 
 # =============================================================================
-# Core Analysis Function (Copied from previous version)
+# Core Analysis Function (Copied from previous version with .empty fix)
 # =============================================================================
 # Tracks RTO events, conditioned on Pre-Breakout RTO status, including interval distribution.
 # MODIFIED Post-RTO check to be strictly AFTER breakout time.
+# FIXED: Check for empty unique_days_in_data using .empty attribute.
 def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end_str, target_day_name, user_timezone):
     """
     Analyzes price action, tracking RTO events.
     MODIFIED: Tracks Post-Breakout RTO interval occurrences separately based on
     whether a Pre-Breakout RTO occurred on the same day.
     MODIFIED: Post-Breakout RTO search now starts strictly AFTER the breakout bar.
+    FIXED: Check for empty unique_days_in_data using .empty attribute.
 
     Returns: (matching_days_processed, breakout_days_count,
               breakout_with_pre_rto_count, post_rto_given_pre_rto_count,
@@ -48,19 +50,15 @@ def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end
         end_dt_dummy = datetime.combine(dummy_date, post_range_end_t)
         total_post_range_duration = end_dt_dummy - start_dt_dummy
         if total_post_range_duration <= timedelta(0):
-             # Use Streamlit warning/error in the main app flow if needed
-             # For now, return zeros, main app logic will handle display
              return 0, 0, 0, 0, 0, 0, [0]*5, [0]*5
         interval_duration = total_post_range_duration / 5
     except (ValueError, TypeError) as e:
-         # Let potential errors bubble up to be caught in the main Streamlit flow
         raise ValueError(f"Invalid time format/inputs for interval calculation: {e}")
 
     # --- Filter data by day name if specified ---
     if target_day_name:
         data_to_process = df[df.index.day_name() == target_day_name]
         if data_to_process.empty:
-            # Return zeros, main Streamlit app logic can inform the user
             return 0, 0, 0, 0, 0, 0, [0]*5, [0]*5
     else:
         data_to_process = df
@@ -69,8 +67,14 @@ def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end
 
     # Get unique days present in the data to iterate over
     unique_days_in_data = data_to_process.index.normalize().unique()
-    if not unique_days_in_data.any(): # Check if unique_days is empty
-         return 0, 0, 0, 0, 0, 0, [0]*5, [0]*5 # Return zeros if no days to process
+    total_days_available_full = len(unique_days_in_data) # Get length before check
+
+    # ===> CORRECTED CHECK FOR EMPTY INDEX <===
+    if unique_days_in_data.empty:
+        # No days to process, return zeros
+        return 0, 0, 0, 0, 0, 0, [0]*5, [0]*5
+    # ===> END CORRECTION <===
+    # (Removed else block with print statement as it's not needed for streamlit app)
 
     # --- Process each unique day ---
     for day_date in unique_days_in_data:
@@ -80,14 +84,12 @@ def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end
         current_day_date_part = day_date.date()
         interval_boundaries_day = []
         try:
-            # Define precise datetime boundaries for the current day
             range_start_dt = datetime.combine(current_day_date_part, range_start_t, tzinfo=user_timezone)
             range_end_dt = datetime.combine(current_day_date_part, range_end_t, tzinfo=user_timezone)
             post_range_end_dt_day = datetime.combine(current_day_date_part, post_range_end_t, tzinfo=user_timezone)
             range_end_exclusive_dt = range_end_dt - timedelta(microseconds=1)
             post_range_end_exclusive_dt_day = post_range_end_dt_day - timedelta(microseconds=1)
 
-            # Calculate interval boundaries for THIS specific day
             current_boundary_dt = range_end_dt
             for i in range(5):
                 end_dt_calc = current_boundary_dt + interval_duration
@@ -97,8 +99,6 @@ def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end
                 current_boundary_dt = next_boundary_dt
 
         except Exception as e:
-            # Silently skip day if boundaries fail? Or raise warning? For now, skip.
-            # Consider logging this in a real application: print(f"Warning:...")
             continue
 
         # --- 1. Analyze Initial Range ---
@@ -165,10 +165,10 @@ def analyze_dynamic_range_rto(df, range_start_str, range_end_str, post_range_end
                     for i in range(5):
                         start_interval, end_interval = interval_boundaries_day[i]
                         is_in_interval = False
-                        if i == 4: # Last interval check [start, end]
+                        if i == 4:
                            if first_post_rto_time >= start_interval and first_post_rto_time <= end_interval:
                                 is_in_interval = True
-                        else: # Check for intervals 0 through 3 [start, end)
+                        else:
                             if first_post_rto_time >= start_interval and first_post_rto_time < end_interval:
                                 is_in_interval = True
 
@@ -204,7 +204,6 @@ def load_data(url):
         # Timestamp Conversion and Indexing
         temp_df['ts_event'] = pd.to_datetime(temp_df['ts_event'], unit='ns')
         temp_df = temp_df.set_index('ts_event').sort_index()
-        # st.write(f"Data loaded. Raw date range: {temp_df.index.min()} to {temp_df.index.max()}") # Optional: show raw range
 
         # OHLCV Column Preparation
         ohlcv_cols = {'open': 'Open','high': 'High','low': 'Low','close': 'Close','volume': 'Volume'}
@@ -225,7 +224,6 @@ def load_data(url):
         nan_check_cols = ['Open', 'High', 'Low', 'Close']
         if master_df[nan_check_cols].isnull().any().any():
             nan_rows = master_df[nan_check_cols].isnull().any(axis=1).sum()
-            # Decide how to handle NaNs - here we drop them for simplicity in analysis
             master_df.dropna(subset=nan_check_cols, inplace=True)
             st.warning(f"Warning: Dropped {nan_rows} row(s) containing NaN values in OHLC data after conversion.")
 
@@ -403,16 +401,26 @@ if run_button:
             # 3. Timezone Conversion
             st.write(f"Applying timezone conversion to {user_timezone.key}...")
             if filtered_df.index.tz is None:
+                # Use nonexistent='NaT' to handle invalid times during DST start
                 filtered_df.index = filtered_df.index.tz_localize('UTC', ambiguous='infer', nonexistent='NaT')
             else: # If already aware, ensure it's UTC before converting
                 filtered_df.index = filtered_df.index.tz_convert('UTC')
+
             # Convert to target timezone
             filtered_df = filtered_df.tz_convert(user_timezone)
-            # Drop rows that became NaT during conversion
-            filtered_df.dropna(axis=0, subset=[filtered_df.index.name], inplace=True)
-            st.write("Timezone conversion complete.")
+            st.write("Timezone conversion complete.") # Moved message up slightly
+
+            # --- Corrected NaT Index Handling ---
+            original_len = len(filtered_df)
+            # Keep only rows where the index is not NaT
+            filtered_df = filtered_df[filtered_df.index.notna()]
+            dropped_rows = original_len - len(filtered_df)
+            if dropped_rows > 0:
+                st.warning(f"Dropped {dropped_rows} rows with invalid timestamps (NaT) created during timezone conversion (likely due to DST).")
+            # --- End Correction ---
+
             if filtered_df.empty:
-                st.warning(f"No data remaining after timezone conversion (possibly due to DST NaT values).")
+                st.warning(f"No data remaining after timezone conversion and NaT removal.")
                 raise ValueError("No data after TZ conversion")
 
             # 4. Run Core Analysis
@@ -445,7 +453,7 @@ if run_button:
             st.success("Analysis complete!")
 
         except (ConnectionError, ValueError) as data_err:
-             # Catch data loading/filtering errors specifically
+             # Catch data loading/filtering/conversion errors specifically
              st.error(f"Data Error: {data_err}")
         except (AmbiguousTimeError, NonExistentTimeError) as tz_err:
              st.error(f"Timezone Error during conversion: {tz_err}. This often occurs around DST transitions. Try adjusting the date range or using UTC.")
@@ -461,7 +469,6 @@ if run_button:
             st.subheader("Analysis Summary")
 
             # Display Parameters Used
-            # Use columns for better layout
             p = results['params']
             col1, col2 = st.columns(2)
             with col1:
@@ -505,7 +512,7 @@ if run_button:
             st.markdown("---")
             st.subheader("Conditional Interval Distribution")
 
-            # Calculate interval labels (using the actual time objects)
+            # Calculate interval labels (using the actual time objects selected by user)
             interval_labels = get_interval_labels(range_end_t, post_range_end_t)
 
             col1, col2 = st.columns(2)
@@ -517,7 +524,8 @@ if run_button:
                         count = results['intervals_pre'][i]
                         prob = (count / results['b_w_pre']) * 100
                         interval_data_pre.append({"Interval": interval_labels[i], "Count": count, "Probability (%)": f"{prob:.2f}"})
-                    st.table(pd.DataFrame(interval_data_pre).set_index("Interval"))
+                    # Use st.dataframe for better table rendering than st.table
+                    st.dataframe(pd.DataFrame(interval_data_pre).set_index("Interval"), use_container_width=True)
                 else:
                     st.write("(No days with Pre-Breakout RTO to analyze intervals)")
 
@@ -529,7 +537,8 @@ if run_button:
                         count = results['intervals_no_pre'][i]
                         prob = (count / results['b_no_pre']) * 100
                         interval_data_no_pre.append({"Interval": interval_labels[i], "Count": count, "Probability (%)": f"{prob:.2f}"})
-                    st.table(pd.DataFrame(interval_data_no_pre).set_index("Interval"))
+                    # Use st.dataframe here too
+                    st.dataframe(pd.DataFrame(interval_data_no_pre).set_index("Interval"), use_container_width=True)
                 else:
                     st.write("(No days without Pre-Breakout RTO to analyze intervals)")
 
