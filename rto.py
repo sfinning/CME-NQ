@@ -64,7 +64,7 @@ def load_historical_data(url):
                  st.sidebar.error("Historical data loaded, but became empty after cleaning.")
                  return None # Return None to indicate failure
 
-        st.info("Historical data loaded.")
+        st.info("Historical data loaded from Databento CSV.")
         return master_df
 
     except FileNotFoundError:
