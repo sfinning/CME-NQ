@@ -400,8 +400,6 @@ if st.sidebar.button("Load Chart"):
                 latest_timestamp = df.index[-1]
                 day_of_week = latest_timestamp.strftime('%A') # Get current day name
                 date_str = latest_timestamp.strftime('%B %d, %Y')
-                st.sidebar.markdown("---")
-                st.sidebar.info(f"{day_of_week} {date_str}")
             except Exception: pass # Ignore if error getting latest date
 
             # --- Create Plotly Chart ---
@@ -514,7 +512,7 @@ if st.sidebar.button("Load Chart"):
 
                 if probability is not None:
                     st.sidebar.metric(
-                        label="P(RTO | Breakout)",
+                        label="(RTO after Breakout)",
                         value=f"{probability:.1f}%",
                         delta=f"{rto_scenarios}/{total_scenarios} scenarios",
                         delta_color="off"
@@ -534,6 +532,7 @@ if st.sidebar.button("Load Chart"):
             st.sidebar.markdown("---") # Separator
             # --- End Probability Calculation ---
 
+            st.sidebar.info(f"{day_of_week} {date_str}")
 
             # --- Display Previous Hour Info (Moved here) ---
             if last_completed_hour_start and last_completed_hour_end: # Check both exist
