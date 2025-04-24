@@ -34,7 +34,7 @@ if data_path is None:
     sys.exit(1)
 
 # Define the output path based on where the input file was found
-output_path = os.path.join(os.path.dirname(data_path), 'nq-ohlcv-5m.csv')
+output_path = os.path.join(os.path.dirname(data_path), 'nq-ohlcv-30m.csv')
 
 print(f"Input file: {data_path}")
 print(f"Output will be saved to: {output_path}")
@@ -92,7 +92,7 @@ for i, symbol in enumerate(symbols):
     
     # Resample to 5-minute intervals
     try:
-        resampled = symbol_data.resample('5min').agg({
+        resampled = symbol_data.resample('30min').agg({
             'open': 'first',      # First price in interval
             'high': 'max',        # Highest price in interval
             'low': 'min',         # Lowest price in interval
