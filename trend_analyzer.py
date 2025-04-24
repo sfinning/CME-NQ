@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import time
 
-# --- Prerequisites ---
+# --- Prerequisites Block ---
 # Ensure the DataFrame 'df' is loaded and correctly formatted
 try:
     # Check if df exists in the current scope and if its index is a DatetimeIndex
@@ -15,63 +15,60 @@ try:
             raise KeyError("The column 'ts_event' was not found in the loaded CSV file.")
 
         # 1. Convert 'ts_event' column to datetime objects (UTC).
-        #    Invalid parsing will be set as NaT (Not a Time).
         df['ts_event'] = pd.to_datetime(df['ts_event'], unit='ns', utc=True, errors='coerce')
 
         # 2. Drop rows where the conversion resulted in NaT in the 'ts_event' COLUMN.
-        #    This must be done BEFORE setting the index.
         df.dropna(subset=['ts_event'], inplace=True)
 
-        # 3. Now, set the cleaned 'ts_event' column as the DataFrame index.
+        # 3. Set the cleaned 'ts_event' column as the DataFrame index.
         df.set_index('ts_event', inplace=True)
 
         print("Data reloaded, cleaned, and index set successfully.")
     else:
-         # Optional: Add a message confirming df is already loaded
          print("DataFrame 'df' already loaded and seems valid.")
 
-# Handle potential errors during the process
 except NameError:
-    # This specific error shouldn't happen with 'df' not in globals() check, but good practice
     print("Error: DataFrame 'df' somehow referenced before assignment.")
     exit()
 except KeyError as e:
-     # Catch the specific error if 'ts_event' column is missing from CSV
      print(f"KeyError during data check/reload: {e}. Please ensure the CSV file has the 'ts_event' column.")
      exit()
 except Exception as e:
-    # Catch any other unexpected errors during loading/processing
     print(f"An unexpected error occurred during data check/reload: {e}")
     exit()
 # --- End Prerequisites ---
 
 
-def analyze_daily_price_action_per_symbol(df_full, symbol, start_time_str, end_time_str, timezone='America/New_York'):
+def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_range_end_str, timezone='America/New_York'):
     """
-    Analyzes daily price action between a start and end time for a specific symbol.
-    (This function is essentially the same as the previous version)
+    Analyzes and compares price direction of an opening range vs. the full day (09:30-16:00).
 
     Args:
         df_full (pd.DataFrame): The complete DataFrame with all symbols.
-        symbol (str): The instrument symbol to filter and analyze (e.g., 'NQM0').
-        start_time_str (str): Start time in 'HH:MM' format.
-        end_time_str (str): End time in 'HH:MM' format.
-        timezone (str): The timezone to interpret start/end times and group days.
+        symbol (str): The instrument symbol to filter and analyze.
+        open_range_start_str (str): Opening range start time in 'HH:MM' format.
+        open_range_end_str (str): Opening range end time in 'HH:MM' format.
+        timezone (str): The timezone for interpreting times and grouping days.
 
     Returns:
-        dict: A dictionary containing bullish and bearish percentages, or None if errors occur.
+        dict: A dictionary containing comparison statistics, or None if errors occur.
     """
     print(f"\n--- Analyzing Symbol: {symbol} ---")
-    print(f"Time window: {start_time_str} - {end_time_str} ({timezone})")
+    print(f"Opening Range: {open_range_start_str} - {open_range_end_str} ({timezone})")
+    print(f"Full Day Range: 09:30 - 16:00 ({timezone})")
 
     try:
-        start_time = pd.to_datetime(start_time_str, format='%H:%M').time()
-        end_time = pd.to_datetime(end_time_str, format='%H:%M').time()
+        # Parse user input times
+        open_range_start_time = pd.to_datetime(open_range_start_str, format='%H:%M').time()
+        open_range_end_time = pd.to_datetime(open_range_end_str, format='%H:%M').time()
+        # Define fixed full day times
+        full_day_start_time = time(9, 30)
+        full_day_end_time = time(16, 0)
     except ValueError:
-        print(f"Error: Invalid time format for symbol {symbol}. Please use HH:MM.")
+        print(f"Error: Invalid time format provided. Please use HH:MM.")
         return None
 
-    # Filter for the chosen symbol *within the function*
+    # Filter for the chosen symbol
     df_symbol = df_full[df_full['symbol'] == symbol].copy()
     if df_symbol.empty:
         print(f"No data found for symbol '{symbol}'. Skipping.")
@@ -89,60 +86,102 @@ def analyze_daily_price_action_per_symbol(df_full, symbol, start_time_str, end_t
 
     unique_dates = df_symbol.index.normalize().unique()
 
-    bullish_days = 0
-    bearish_days = 0
-    neutral_days = 0
-    processed_days = 0
+    # Initialize counters
+    continuation_days = 0 # Opening range direction matches full day direction
+    reversal_days = 0     # Opening range direction opposes full day direction
+    other_days = 0        # Cases like neutral ranges or mismatch directions
+    processed_days = 0    # Days where *both* ranges had valid, comparable data
 
-    # print(f"Processing {len(unique_dates)} unique dates for {symbol}...") # Optional: more verbose logging
+    # print(f"Processing {len(unique_dates)} unique dates for {symbol}...") # Optional verbose logging
 
     for current_date in unique_dates:
-        start_dt = pd.Timestamp.combine(current_date, start_time).tz_localize(timezone)
-        end_dt = pd.Timestamp.combine(current_date, end_time).tz_localize(timezone)
+        # --- 1. Opening Range Data ---
+        open_range_start_dt = pd.Timestamp.combine(current_date, open_range_start_time).tz_localize(timezone)
+        open_range_end_dt = pd.Timestamp.combine(current_date, open_range_end_time).tz_localize(timezone)
 
-        start_data = df_symbol.asof(start_dt)
-        end_data = df_symbol.asof(end_dt)
+        open_range_start_data = df_symbol.asof(open_range_start_dt)
+        open_range_end_data = df_symbol.asof(open_range_end_dt)
 
-        valid_start = isinstance(start_data, pd.Series) and not start_data.empty and start_data.name.date() == current_date.date()
-        valid_end = isinstance(end_data, pd.Series) and not end_data.empty and end_data.name.date() == current_date.date()
+        valid_or_start = isinstance(open_range_start_data, pd.Series) and not open_range_start_data.empty and open_range_start_data.name.date() == current_date.date()
+        valid_or_end = isinstance(open_range_end_data, pd.Series) and not open_range_end_data.empty and open_range_end_data.name.date() == current_date.date()
+        valid_opening_range = valid_or_start and valid_or_end and open_range_end_data.name >= open_range_start_data.name # Allow start==end time
 
-        if valid_start and valid_end and end_data.name > start_data.name:
-            start_open = start_data['open']
-            end_close = end_data['close']
-            processed_days += 1
+        open_range_start_open = None
+        open_range_end_close = None
+        if valid_opening_range:
+            open_range_start_open = open_range_start_data['open']
+            open_range_end_close = open_range_end_data['close']
 
-            if end_close > start_open:
-                bullish_days += 1
-            elif end_close < start_open:
-                bearish_days += 1
-            else:
-                neutral_days += 1
+        # --- 2. Full Day Range Data (09:30 - 16:00) ---
+        full_day_start_dt = pd.Timestamp.combine(current_date, full_day_start_time).tz_localize(timezone)
+        full_day_end_dt = pd.Timestamp.combine(current_date, full_day_end_time).tz_localize(timezone)
 
-    print(f"Finished processing for {symbol}. Analyzed {processed_days} valid days.")
+        full_day_start_data = df_symbol.asof(full_day_start_dt)
+        full_day_end_data = df_symbol.asof(full_day_end_dt)
+
+        valid_fd_start = isinstance(full_day_start_data, pd.Series) and not full_day_start_data.empty and full_day_start_data.name.date() == current_date.date()
+        valid_fd_end = isinstance(full_day_end_data, pd.Series) and not full_day_end_data.empty and full_day_end_data.name.date() == current_date.date()
+        valid_full_day_range = valid_fd_start and valid_fd_end and full_day_end_data.name >= full_day_start_data.name
+
+        full_day_start_open = None
+        full_day_end_close = None
+        if valid_full_day_range:
+             # Get the 'open' at 9:30 and 'close' at 16:00
+             full_day_start_open = full_day_start_data['open']
+             full_day_end_close = full_day_end_data['close']
+
+        # --- 3. Determine Directions & Compare (Only if both ranges are valid) ---
+        if valid_opening_range and valid_full_day_range:
+            processed_days += 1 # Count day only if both ranges are analyzable
+
+            # Determine opening range direction (+1 Bullish, -1 Bearish, 0 Neutral)
+            opening_range_direction = 0
+            if open_range_end_close > open_range_start_open: opening_range_direction = 1
+            elif open_range_end_close < open_range_start_open: opening_range_direction = -1
+
+            # Determine full day direction (+1 Bullish, -1 Bearish, 0 Neutral)
+            full_day_direction = 0
+            if full_day_end_close > full_day_start_open: full_day_direction = 1
+            elif full_day_end_close < full_day_start_open: full_day_direction = -1
+
+            # Compare directions (ignore neutral ranges for continuation/reversal counts)
+            if opening_range_direction != 0 and full_day_direction != 0:
+                if opening_range_direction == full_day_direction:
+                    continuation_days += 1
+                else: # Opposite directions
+                    reversal_days += 1
+            else: # One or both ranges were neutral, or other non-comparable outcome
+                other_days += 1
+        # else: # Optional: Log days skipped because one range was invalid
+             # print(f"Skipping {current_date.date()}: Invalid data for one or both ranges.")
+
+
+    print(f"Finished processing for {symbol}. Analyzed {processed_days} days where both ranges were valid.")
 
     if processed_days == 0:
-        return {'symbol': symbol, 'bullish_pct': 0, 'bearish_pct': 0, 'neutral_pct': 0, 'processed_days': 0}
+        return {'symbol': symbol, 'continuation_pct': 0, 'reversal_pct': 0, 'other_pct': 0, 'processed_days': 0}
 
-    bullish_pct = (bullish_days / processed_days) * 100
-    bearish_pct = (bearish_days / processed_days) * 100
-    neutral_pct = (neutral_days / processed_days) * 100
+    # Calculate percentages based on days where comparison was possible
+    continuation_pct = (continuation_days / processed_days) * 100
+    reversal_pct = (reversal_days / processed_days) * 100
+    other_pct = (other_days / processed_days) * 100
 
     return {
         'symbol': symbol,
-        'bullish_pct': bullish_pct,
-        'bearish_pct': bearish_pct,
-        'neutral_pct': neutral_pct,
+        'continuation_pct': continuation_pct,
+        'reversal_pct': reversal_pct,
+        'other_pct': other_pct, # Includes days where one/both ranges were neutral
         'processed_days': processed_days
     }
 
-# --- User Input and Execution ---
+# --- Main Execution ---
 
-# Get time input from user (once for all symbols)
-input_start_time = input("Enter start time (HH:MM, e.g., 09:30): ")
-input_end_time = input("Enter end time (HH:MM, e.g., 16:00): ")
+# Get opening range time input from user
+input_start_time = input("Enter opening range START time (HH:MM, e.g., 09:30): ")
+input_end_time = input("Enter opening range END time (HH:MM, e.g., 10:00): ")
 target_timezone = 'America/New_York' # Define timezone
 
-# Find unique symbols in the main DataFrame
+# Find unique symbols
 unique_symbols = df['symbol'].unique()
 print(f"\nFound symbols: {', '.join(unique_symbols)}")
 
@@ -150,8 +189,7 @@ all_results = []
 
 # Loop through each symbol and perform the analysis
 for sym in unique_symbols:
-    # Pass the full DataFrame 'df' and the current symbol 'sym'
-    result = analyze_daily_price_action_per_symbol(df, sym, input_start_time, input_end_time, timezone=target_timezone)
+    result = analyze_daily_range_comparison(df, sym, input_start_time, input_end_time, timezone=target_timezone)
     if result:
         all_results.append(result)
 
@@ -162,10 +200,10 @@ if not all_results:
 else:
     for res in all_results:
         print(f"\nSymbol: {res['symbol']}")
-        print(f"  Processed days: {res['processed_days']}")
+        print(f"  Analyzed days (both ranges valid): {res['processed_days']}")
         if res['processed_days'] > 0:
-             print(f"  Bullish Days: {res['bullish_pct']:.2f}%")
-             print(f"  Bearish Days: {res['bearish_pct']:.2f}%")
-             print(f"  Neutral Days: {res['neutral_pct']:.2f}%")
+             print(f"  Continuation: {res['continuation_pct']:.2f}% (Opening range direction matched full day 09:30-16:00)")
+             print(f"  Reversal:     {res['reversal_pct']:.2f}% (Opening range direction opposed full day 09:30-16:00)")
+             print(f"  Other:        {res['other_pct']:.2f}% (Includes days with neutral range(s))")
         else:
-             print("  No valid days found in the specified time window.")
+             print("  No valid days found for comparison.")
