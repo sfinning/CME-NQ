@@ -41,26 +41,35 @@ except Exception as e:
 # --- End Prerequisites ---
 
 
-def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_range_end_str, timezone='America/New_York'):
+def analyze_daily_range_comparison(df_full, symbol,
+                                   open_range_start_str, open_range_end_str,
+                                   full_day_start_str, full_day_end_str, # <-- New parameters
+                                   timezone='America/New_York'):
     """
-    Analyzes price direction comparison, separating results by opening range direction.
+    Analyzes price direction comparison, separating results by opening range direction,
+    using user-defined opening and full day ranges.
 
     Args:
-        # ... (same as before) ...
+        df_full (pd.DataFrame): The full DataFrame with time-series data.
+        symbol (str): The specific symbol to analyze (e.g., 'NQM4 Curncy').
+        open_range_start_str (str): Start time for the opening range (HH:MM format).
+        open_range_end_str (str): End time for the opening range (HH:MM format).
+        full_day_start_str (str): Start time for the full day range (HH:MM format). # <-- New Doc
+        full_day_end_str (str): End time for the full day range (HH:MM format).   # <-- New Doc
+        timezone (str): The timezone to use for analysis (e.g., 'America/New_York').
 
     Returns:
         dict: A dictionary containing detailed comparison statistics (counts),
               or None if errors occur or no data is found.
     """
     print(f"\n--- Analyzing Symbol: {symbol} ---")
-    # ...(Time parsing, symbol filtering, timezone conversion - keep as is)...
     try:
         # Parse user input times
         open_range_start_time = pd.to_datetime(open_range_start_str, format='%H:%M').time()
         open_range_end_time = pd.to_datetime(open_range_end_str, format='%H:%M').time()
-        # Define fixed full day times
-        full_day_start_time = time(9, 30)
-        full_day_end_time = time(16, 0)
+        # Parse full day times <-- New parsing
+        full_day_start_time = pd.to_datetime(full_day_start_str, format='%H:%M').time()
+        full_day_end_time = pd.to_datetime(full_day_end_str, format='%H:%M').time()
     except ValueError:
         print(f"Error: Invalid time format provided. Please use HH:MM.")
         return None
@@ -83,31 +92,28 @@ def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_r
 
     unique_dates = df_symbol.index.normalize().unique()
 
-    # Initialize detailed counters for this symbol
-    bull_open_continue_bull_day = 0 # Bullish open -> Bullish full day
-    bull_open_reverse_bear_day = 0 # Bullish open -> Bearish full day
-    bull_open_neutral_day = 0      # Bullish open -> Neutral full day
-
-    bear_open_continue_bear_day = 0 # Bearish open -> Bearish full day
-    bear_open_reverse_bull_day = 0  # Bearish open -> Bullish full day
-    bear_open_neutral_day = 0       # Bearish open -> Neutral full day
-
-    neutral_open_days = 0           # Neutral open range occurred
-
-    valid_bullish_open_days = 0    # Count of days with a valid Bullish opening range
-    valid_bearish_open_days = 0    # Count of days with a valid Bearish opening range
-    processed_days_count = 0       # Count of days where *both* ranges were valid
-
+    # Initialize detailed counters (same as before)
+    bull_open_continue_bull_day = 0
+    bull_open_reverse_bear_day = 0
+    bull_open_neutral_day = 0
+    bear_open_continue_bear_day = 0
+    bear_open_reverse_bull_day = 0
+    bear_open_neutral_day = 0
+    neutral_open_days = 0
+    valid_bullish_open_days = 0
+    valid_bearish_open_days = 0
+    processed_days_count = 0
 
     for current_date in unique_dates:
         # --- 1. Opening Range Data ---
-        # ...(Keep the logic to get open_range_start_open, open_range_end_close, valid_opening_range) ...
+        # (Logic remains the same, uses open_range_start_time, open_range_end_time)
         open_range_start_dt = pd.Timestamp.combine(current_date, open_range_start_time).tz_localize(timezone)
         open_range_end_dt = pd.Timestamp.combine(current_date, open_range_end_time).tz_localize(timezone)
         open_range_start_data = df_symbol.asof(open_range_start_dt)
         open_range_end_data = df_symbol.asof(open_range_end_dt)
         valid_or_start = isinstance(open_range_start_data, pd.Series) and not open_range_start_data.empty and open_range_start_data.name.date() == current_date.date()
         valid_or_end = isinstance(open_range_end_data, pd.Series) and not open_range_end_data.empty and open_range_end_data.name.date() == current_date.date()
+        # Ensure end time is not before start time on the same day for asof results
         valid_opening_range = valid_or_start and valid_or_end and open_range_end_data.name >= open_range_start_data.name
         open_range_start_open = None
         open_range_end_close = None
@@ -117,13 +123,14 @@ def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_r
 
 
         # --- 2. Full Day Range Data ---
-        # ...(Keep the logic to get full_day_start_open, full_day_end_close, valid_full_day_range) ...
-        full_day_start_dt = pd.Timestamp.combine(current_date, full_day_start_time).tz_localize(timezone)
-        full_day_end_dt = pd.Timestamp.combine(current_date, full_day_end_time).tz_localize(timezone)
+        # (Logic updated to use the parsed full_day_start_time, full_day_end_time) <-- Updated logic
+        full_day_start_dt = pd.Timestamp.combine(current_date, full_day_start_time).tz_localize(timezone) # Use parsed time
+        full_day_end_dt = pd.Timestamp.combine(current_date, full_day_end_time).tz_localize(timezone)     # Use parsed time
         full_day_start_data = df_symbol.asof(full_day_start_dt)
         full_day_end_data = df_symbol.asof(full_day_end_dt)
         valid_fd_start = isinstance(full_day_start_data, pd.Series) and not full_day_start_data.empty and full_day_start_data.name.date() == current_date.date()
         valid_fd_end = isinstance(full_day_end_data, pd.Series) and not full_day_end_data.empty and full_day_end_data.name.date() == current_date.date()
+         # Ensure end time is not before start time on the same day for asof results
         valid_full_day_range = valid_fd_start and valid_fd_end and full_day_end_data.name >= full_day_start_data.name
         full_day_start_open = None
         full_day_end_close = None
@@ -132,53 +139,44 @@ def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_r
              full_day_end_close = full_day_end_data['close']
 
         # --- 3. Determine Directions & Compare ---
+        # (Logic remains the same)
         if valid_opening_range and valid_full_day_range:
-            processed_days_count += 1 # Increment count for days with analyzable ranges
+            processed_days_count += 1
 
-            # Determine opening range direction
             opening_range_direction = 0
             if open_range_end_close > open_range_start_open: opening_range_direction = 1
             elif open_range_end_close < open_range_start_open: opening_range_direction = -1
 
-            # Determine full day direction
             full_day_direction = 0
             if full_day_end_close > full_day_start_open: full_day_direction = 1
             elif full_day_end_close < full_day_start_open: full_day_direction = -1
 
-            # Categorize based on opening range direction
-            if opening_range_direction == 1: # Bullish Open
+            if opening_range_direction == 1:
                 valid_bullish_open_days += 1
-                if full_day_direction == 1:
-                    bull_open_continue_bull_day += 1
-                elif full_day_direction == -1:
-                    bull_open_reverse_bear_day += 1
-                else: # full_day_direction == 0
-                    bull_open_neutral_day += 1
-            elif opening_range_direction == -1: # Bearish Open
+                if full_day_direction == 1: bull_open_continue_bull_day += 1
+                elif full_day_direction == -1: bull_open_reverse_bear_day += 1
+                else: bull_open_neutral_day += 1
+            elif opening_range_direction == -1:
                 valid_bearish_open_days += 1
-                if full_day_direction == -1:
-                    bear_open_continue_bear_day += 1
-                elif full_day_direction == 1:
-                    bear_open_reverse_bull_day += 1
-                else: # full_day_direction == 0
-                    bear_open_neutral_day += 1
-            else: # Neutral Open
+                if full_day_direction == -1: bear_open_continue_bear_day += 1
+                elif full_day_direction == 1: bear_open_reverse_bull_day += 1
+                else: bear_open_neutral_day += 1
+            else:
                 neutral_open_days += 1
 
     print(f"Finished processing for {symbol}. Analyzed {processed_days_count} days where both ranges were valid.")
 
     # --- 4. Return Detailed Counts ---
+    # (Return structure remains the same)
     return {
         'symbol': symbol,
         'processed_days': processed_days_count,
         'valid_bullish_open_days': valid_bullish_open_days,
         'valid_bearish_open_days': valid_bearish_open_days,
         'neutral_open_days': neutral_open_days,
-        # Counts for Bullish Open scenarios
         'bull_open_continue_bull_day': bull_open_continue_bull_day,
         'bull_open_reverse_bear_day': bull_open_reverse_bear_day,
         'bull_open_neutral_day': bull_open_neutral_day,
-        # Counts for Bearish Open scenarios
         'bear_open_continue_bear_day': bear_open_continue_bear_day,
         'bear_open_reverse_bull_day': bear_open_reverse_bull_day,
         'bear_open_neutral_day': bear_open_neutral_day,
@@ -189,6 +187,11 @@ def analyze_daily_range_comparison(df_full, symbol, open_range_start_str, open_r
 # Get opening range time input from user
 input_start_time = input("Enter opening range START time (HH:MM, e.g., 09:30): ")
 input_end_time = input("Enter opening range END time (HH:MM, e.g., 10:00): ")
+
+# Get full day range time input from user <-- New inputs
+input_full_day_start_time = input("Enter full day START time (HH:MM, e.g., 09:30): ")
+input_full_day_end_time = input("Enter full day END time (HH:MM, e.g., 16:00): ")
+
 target_timezone = 'America/New_York' # Define timezone
 
 # Find unique symbols
@@ -199,20 +202,25 @@ all_results = []
 
 # Loop through each symbol and perform the analysis
 for sym in unique_symbols:
-    result = analyze_daily_range_comparison(df, sym, input_start_time, input_end_time, timezone=target_timezone)
+    # Pass the new time strings to the function <-- Updated function call
+    result = analyze_daily_range_comparison(
+        df, sym,
+        input_start_time, input_end_time,
+        input_full_day_start_time, input_full_day_end_time, # Pass new times
+        timezone=target_timezone
+    )
     if result:
         all_results.append(result)
 
 # --- Aggregate Detailed Results Across All Symbols ---
+# (Aggregation logic remains the same)
 total_processed_days = 0
 total_valid_bullish_open_days = 0
 total_valid_bearish_open_days = 0
 total_neutral_open_days = 0
-
 total_bull_open_continue_bull_day = 0
 total_bull_open_reverse_bear_day = 0
 total_bull_open_neutral_day = 0
-
 total_bear_open_continue_bear_day = 0
 total_bear_open_reverse_bull_day = 0
 total_bear_open_neutral_day = 0
@@ -222,11 +230,9 @@ for res in all_results:
     total_valid_bullish_open_days += res['valid_bullish_open_days']
     total_valid_bearish_open_days += res['valid_bearish_open_days']
     total_neutral_open_days += res['neutral_open_days']
-
     total_bull_open_continue_bull_day += res['bull_open_continue_bull_day']
     total_bull_open_reverse_bear_day += res['bull_open_reverse_bear_day']
     total_bull_open_neutral_day += res['bull_open_neutral_day']
-
     total_bear_open_continue_bear_day += res['bear_open_continue_bear_day']
     total_bear_open_reverse_bull_day += res['bear_open_reverse_bull_day']
     total_bear_open_neutral_day += res['bear_open_neutral_day']
@@ -234,6 +240,9 @@ for res in all_results:
 # --- Print and Plot Aggregated Summaries ---
 
 print("\n--- Aggregated Analysis Results (All Symbols) ---")
+# Display the user-defined ranges in the summary
+print(f"Opening Range Analyzed: {input_start_time} - {input_end_time}")
+print(f"Full Day Range Analyzed: {input_full_day_start_time} - {input_full_day_end_time}") # <-- New print
 print(f"Total days where both ranges were valid: {total_processed_days}")
 print(f"Total days with Neutral opening range: {total_neutral_open_days}")
 
@@ -247,9 +256,10 @@ else:
     bull_neutral_pct = (total_bull_open_neutral_day / total_valid_bullish_open_days) * 100
 
     print(f"Total days with Bullish opening range: {total_valid_bullish_open_days}")
-    print(f"  -> Full Day Continued Bullish: {bull_continue_pct:.2f}% ({total_bull_open_continue_bull_day} days)")
-    print(f"  -> Full Day Reversed to Bearish: {bull_reverse_pct:.2f}% ({total_bull_open_reverse_bear_day} days)")
-    print(f"  -> Full Day was Neutral:         {bull_neutral_pct:.2f}% ({total_bull_open_neutral_day} days)")
+    print(f"  Outcome during Full Day ({input_full_day_start_time}-{input_full_day_end_time}):") # <-- Updated print context
+    print(f"    -> Continued Bullish: {bull_continue_pct:.2f}% ({total_bull_open_continue_bull_day} days)")
+    print(f"    -> Reversed to Bearish: {bull_reverse_pct:.2f}% ({total_bull_open_reverse_bear_day} days)")
+    print(f"    -> Was Neutral:         {bull_neutral_pct:.2f}% ({total_bull_open_neutral_day} days)")
 
     # Pie Chart for Bullish Open
     labels = 'Continued Bullish', 'Reversed to Bearish', 'Neutral Full Day'
@@ -261,7 +271,8 @@ else:
     ax_bull.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
                 shadow=True, startangle=90)
     ax_bull.axis('equal')
-    plt.title(f'Outcome Following BULLISH Opening Range ({input_start_time}-{input_end_time})\nTotal Bullish Open Days: {total_valid_bullish_open_days}')
+    # Updated plot title <--
+    plt.title(f'Full Day ({input_full_day_start_time}-{input_full_day_end_time}) Outcome Following BULLISH Opening Range ({input_start_time}-{input_end_time})\nTotal Bullish Open Days: {total_valid_bullish_open_days}')
     plt.tight_layout()
     print("\nDisplaying pie chart for Bullish Open days...")
     plt.show()
@@ -277,11 +288,12 @@ else:
     bear_neutral_pct = (total_bear_open_neutral_day / total_valid_bearish_open_days) * 100
 
     print(f"Total days with Bearish opening range: {total_valid_bearish_open_days}")
-    print(f"  -> Full Day Continued Bearish: {bear_continue_pct:.2f}% ({total_bear_open_continue_bear_day} days)")
-    print(f"  -> Full Day Reversed to Bullish: {bear_reverse_pct:.2f}% ({total_bear_open_reverse_bull_day} days)")
-    print(f"  -> Full Day was Neutral:       {bear_neutral_pct:.2f}% ({total_bear_open_neutral_day} days)")
+    print(f"  Outcome during Full Day ({input_full_day_start_time}-{input_full_day_end_time}):") # <-- Updated print context
+    print(f"    -> Continued Bearish: {bear_continue_pct:.2f}% ({total_bear_open_continue_bear_day} days)")
+    print(f"    -> Reversed to Bullish: {bear_reverse_pct:.2f}% ({total_bear_open_reverse_bull_day} days)")
+    print(f"    -> Was Neutral:         {bear_neutral_pct:.2f}% ({total_bear_open_neutral_day} days)")
 
-     # Pie Chart for Bearish Open
+    # Pie Chart for Bearish Open
     labels = 'Continued Bearish', 'Reversed to Bullish', 'Neutral Full Day'
     sizes = [total_bear_open_continue_bear_day, total_bear_open_reverse_bull_day, total_bear_open_neutral_day]
     colors = ['#ff9999', '#66b3ff', '#99ff99'] # Red, Blue, Green
@@ -291,7 +303,8 @@ else:
     ax_bear.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
                 shadow=True, startangle=90)
     ax_bear.axis('equal')
-    plt.title(f'Outcome Following BEARISH Opening Range ({input_start_time}-{input_end_time})\nTotal Bearish Open Days: {total_valid_bearish_open_days}')
+    # Updated plot title <--
+    plt.title(f'Full Day ({input_full_day_start_time}-{input_full_day_end_time}) Outcome Following BEARISH Opening Range ({input_start_time}-{input_end_time})\nTotal Bearish Open Days: {total_valid_bearish_open_days}')
     plt.tight_layout()
     print("\nDisplaying pie chart for Bearish Open days...")
     plt.show()
